@@ -9,6 +9,8 @@ public class MainScript : MonoBehaviour
     public ComputeShader ChainCompute;
     public Mesh ChainMesh;
 
+    public Texture2D NoiseTexture;
+
     public int ChainLinkCount;
 
     struct MeshData
@@ -21,6 +23,7 @@ public class MainScript : MonoBehaviour
     {
         public Vector3 Position;
         public Vector3 LinkNormal;
+        public Vector3 LinkBinormal;
     }
 
     private ComputeBuffer meshBuffer;
@@ -30,21 +33,25 @@ public class MainScript : MonoBehaviour
     private int groupsToDispatch;
 
     private const int MeshBufferStride = sizeof(float) * 3 + sizeof(float) * 3;
-    private const int ChainDataBufferStride = sizeof(float) * 3 + sizeof(float) * 3;
+    private const int ChainDataBufferStride = sizeof(float) * 3 + sizeof(float) * 3 + sizeof(float) * 3;
 
     private void Start()
     {
+        ChainMat = new Material(ChainMat);
         meshBuffer = GetMeshBuffer();
         chainDataBuffer = GetChainDataBuffer();
         chainComputeKernel = ChainCompute.FindKernel("ChainCompute");
         groupsToDispatch = Mathf.CeilToInt((float)ChainLinkCount / computeThreadCount);
     }
-
-    private void Update()
+    
+    private void Update() 
     {
+        ChainCompute.SetTexture(chainComputeKernel, "_NoiseTexture", NoiseTexture);
         ChainCompute.SetBuffer(chainComputeKernel, "_ChainDataBuffer", chainDataBuffer);
+        ChainCompute.SetFloat("_Time", Time.time);
         ChainCompute.Dispatch(chainComputeKernel, groupsToDispatch, 1, 1);
 
+        ChainMat.SetMatrix("_MasterMatrix", transform.localToWorldMatrix);
         ChainMat.SetBuffer("_MeshBuffer", meshBuffer);
         ChainMat.SetBuffer("_ChainDataBuffer", chainDataBuffer);
     }
@@ -70,13 +77,27 @@ public class MainScript : MonoBehaviour
         ChainData[] data = new ChainData[ChainLinkCount];
         for (int i = 0; i < ChainLinkCount; i++)
         {
-            ChainData datum = new ChainData();
-            datum.Position = new Vector3(0, 0, i);
-            data[i] = datum;
+            data[i].Position = new Vector3(0, i, 0);
+            data[i].LinkNormal = new Vector3(0, 1, 0);
+            if (i % 2 < 1)
+            {
+                data[i].LinkBinormal = new Vector3(0, 0, 1);
+            }
+            else
+            {
+                data[i].LinkBinormal = new Vector3(1, 0, 0);
+            }
         }
         ret.SetData(data);
         return ret;
     }
+
+    private void OnDestroy()
+    {
+        meshBuffer.Release();
+        chainDataBuffer.Release();
+    }
+
     void OnRenderObject()
     {
         ChainMat.SetPass(0);

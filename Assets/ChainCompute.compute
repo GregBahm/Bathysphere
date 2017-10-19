@@ -4,12 +4,46 @@ struct ChainData
 {
     float3 Position;
     float3 LinkNormal;
+    float3 LinkBinormal;
 };
 
+float _Time;
+
+Texture2D _NoiseTexture;
+SamplerState sampler_NoiseTexture;
+
+RWStructuredBuffer<ChainData> _LastChainDataBuffer;
 RWStructuredBuffer<ChainData> _ChainDataBuffer;
 
 [numthreads(128,1,1)]
-void ChainCompute(uint3 id : SV_DispatchThreadID)
+void ChainCompute(uint3 id : SV_DispatchThreadID) 
 {
+    if (id.x == 0)
+    {
+        return;
+    }
+    uint parentIndex = max(0, id.x - 1);
+    ChainData parent = _ChainDataBuffer[parentIndex];
+    float3 newPos = parent.Position + parent.LinkNormal;
+    float3 parentTangent = cross(parent.LinkBinormal, parent.LinkNormal);
+    
 
+    ChainData self = _ChainDataBuffer[id.x];
+
+    float2 uvs = self.Position.xz + self.Position.y / 100 + _Time;
+    float3 noiseVal = _NoiseTexture.SampleLevel(sampler_NoiseTexture, uvs / 100, 0).xyz;
+    noiseVal = noiseVal * 2 - 1;
+
+    //noiseVal *= oldTangent;
+
+    float3 newNormal = normalize(self.LinkNormal + noiseVal / 200 + float3(0, .0001, 0));
+
+    float3 linkTangent = cross(self.LinkBinormal, newNormal);
+    float3 newBinormal = normalize(cross(newNormal, linkTangent));
+
+    self.Position = newPos;
+    self.LinkNormal = newNormal;
+    self.LinkBinormal = newBinormal;
+    //self.TestVal = noiseVal;
+    _ChainDataBuffer[id.x] = self;
 }
